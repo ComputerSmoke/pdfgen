@@ -72,7 +72,10 @@ app.post("/upload", upload.single("file"), async(req, res) => {
     await del(req.file.path);
     await del(extractedPath);
 
-    await uploadToDrive(pdfPath)
+    await uploadToDrive(pdfPath);
+
+    //Delete generated file after timeout
+    setTimeout(() => clearFolder(outputPath), 1000*60);
 
     res.sendFile(path.join(__dirname, pdfPath.substring(2)));
 });
@@ -165,3 +168,19 @@ const getDriveService = () => {
     const driveService = google.drive({ version: 'v3', auth });
     return driveService;
   };
+
+function clearFolder(path) {
+    del(path);
+}
+
+function cleanDirectory(dir) {
+    let files = fs.readdirSync(dir);
+    for(let i = 0; i < files.length; i++) {
+        del(dir+"/"+files[i]);
+    }
+}
+
+//Clean I/O directories on startup
+cleanDirectory("./output");
+cleanDirectory("./uploads");
+cleanDirectory("./extracted");
