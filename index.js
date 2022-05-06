@@ -16,6 +16,8 @@ const del = require("del");
 const PDFMerger = require('pdf-merger-js');
 const {google} = require("googleapis");
 
+const folderId = '1D7z07TTh6eRUSS-Gw0jRscCMT7qKYI9Q';
+
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
       cb(null, './uploads')
@@ -141,7 +143,6 @@ function script() {
 async function uploadToDrive(filePath) {
     let split = filePath.split("/");
     let fileName = split[split.length-1];
-    const folderId = '1D7z07TTh6eRUSS-Gw0jRscCMT7qKYI9Q';
     const { data: { id, name } = {} } = await (getDriveService().files.create({
       resource: {
         name: fileName,
