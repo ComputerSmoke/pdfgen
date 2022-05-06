@@ -15,6 +15,8 @@ let pdf = require("wkhtmltopdf");
 const del = require("del");
 const PDFMerger = require('pdf-merger-js');
 const {google} = require("googleapis");
+const { rejects } = require('assert');
+const unzip = require("unzip");
 
 
 const folderId = '1D7z07TTh6eRUSS-Gw0jRscCMT7qKYI9Q';
@@ -46,41 +48,43 @@ app.listen(2000);
 console.log("Server started.");
 
 app.post("/upload", upload.single("file"), async(req, res) => {
-    let teamName = req.body.name;
-    //Extract zip file
-    const extractedPath = "./extracted/"+req.file.filename;
-    await new Promise(res => {
-        fs.createReadStream(req.file.path).pipe(
-            unzipper.Extract({path: extractedPath})
-        ).promise().then(res);
-    });
-    //DFS uploaded directory and append .java contents to text and HTML files
-    const outputPath = "./output/"+req.file.filename;
-    fs.mkdirSync(outputPath);
-    const textPath = outputPath + "/plaintext.txt";
-    const htmlPath = outputPath + "/highlighting.html";
-    const bwHtmlPath = outputPath + "/bw.html";
-    const pdfPath = outputPath + "/"+teamName+".pdf";
-    fs.writeFileSync(htmlPath, "<!DOCTYPE html><head><style>"+style()+"</style></head><body>");
-    fs.writeFileSync(bwHtmlPath, "<!DOCTYPE html><body>");
-    let merger = new PDFMerger();
-    dfs(extractedPath, textPath, htmlPath, bwHtmlPath, merger);
-    fs.appendFileSync(htmlPath, "<script>"+script()+"</script><script>hljs.highlightAll();</script></body></html>");
-    fs.appendFileSync(bwHtmlPath, "</body></html>");
-    await generatePdf(bwHtmlPath, pdfPath);
-    merger.add(pdfPath);
-    await merger.save(pdfPath);
-
-    //Delete temporary folders
-    await del(req.file.path);
-    await del(extractedPath);
-
-    await uploadToDrive(pdfPath);
-
-    //Delete generated file after timeout
-    setTimeout(() => clearFolder(outputPath), 1000*60);
-
-    res.sendFile(path.join(__dirname, pdfPath.substring(2)));
+    try {
+        let teamName = req.body.name;
+        //Extract zip file
+        const extractedPath = "./extracted/"+req.file.filename;
+        await new Promise((res, rej) => {
+            fs.createReadStream(req.file.path).pipe(unzipper.Extract({path: extractedPath})).promise().catch((e) => {console.error(e)}).then(res);
+        });
+        //DFS uploaded directory and append .java contents to text and HTML files
+        const outputPath = "./output/"+req.file.filename;
+        fs.mkdirSync(outputPath);
+        const textPath = outputPath + "/plaintext.txt";
+        const htmlPath = outputPath + "/highlighting.html";
+        const bwHtmlPath = outputPath + "/bw.html";
+        const pdfPath = outputPath + "/"+teamName+".pdf";
+        fs.writeFileSync(htmlPath, "<!DOCTYPE html><head><style>"+style()+"</style></head><body>");
+        fs.writeFileSync(bwHtmlPath, "<!DOCTYPE html><body>");
+        let merger = new PDFMerger();
+        dfs(extractedPath, textPath, htmlPath, bwHtmlPath, merger);
+        fs.appendFileSync(htmlPath, "<script>"+script()+"</script><script>hljs.highlightAll();</script></body></html>");
+        fs.appendFileSync(bwHtmlPath, "</body></html>");
+        await generatePdf(bwHtmlPath, pdfPath);
+        merger.add(pdfPath);
+        await merger.save(pdfPath);
+    
+        //Delete temporary folders
+        await del(req.file.path);
+        await del(extractedPath);
+    
+        await uploadToDrive(pdfPath);
+    
+        //Delete generated file after timeout
+        setTimeout(() => clearFolder(outputPath), 1000*60);
+    
+        res.sendFile(path.join(__dirname, pdfPath.substring(2)));
+    } catch(e) {
+        res.send(e);
+    }
 });
 
 async function generatePdf(htmlPath, pdfPath) {
@@ -91,36 +95,46 @@ async function generatePdf(htmlPath, pdfPath) {
 }
 
 function dfs(path, saveDir, htmlPath, bwHtmlPath, merger) {
-    let files = fs.readdirSync(path);
-    //Search for java files
-    for(let i = 0; i < files.length; i++) {
-        let file = files[i];
-        let filePath = path+"/"+file
-        try {
-            if(file.endsWith(".java")) addContents(filePath, saveDir, htmlPath, bwHtmlPath);
-            else if(file.endsWith(".pdf")) merger.add(filePath);
-        } catch(e) {
-            console.error(e);
+    try {
+        let files = fs.readdirSync(path);
+        //Search for java files
+        for(let i = 0; i < files.length; i++) {
+            let file = files[i];
+            let filePath = path+"/"+file
+            try {
+                if(file.endsWith(".java")) addContents(filePath, saveDir, htmlPath, bwHtmlPath);
+                else if(file.endsWith(".pdf")) merger.add(filePath);
+            } catch(e) {
+                console.error("continuing after error: " + e);
+            }
+    
         }
+        //Search subdirectories
+        for(let i = 0; i < files.length; i++) {
+            let file = files[i];
+            let filePath = path+"/"+file
+            if(fs.lstatSync(filePath).isDirectory()) dfs(filePath, saveDir, htmlPath, bwHtmlPath, merger);
+        }
+    } catch(e) {
+        console.error("continuing after error: " + e);
+    }
 
-    }
-    //Search subdirectories
-    for(let i = 0; i < files.length; i++) {
-        let file = files[i];
-        let filePath = path+"/"+file
-        if(fs.lstatSync(filePath).isDirectory()) dfs(filePath, saveDir, htmlPath, bwHtmlPath, merger);
-    }
 }
 //Append contents of file to saveDir
 function addContents(filePath, saveDir, htmlPath, bwHtmlPath) {
-    let contents = fs.readFileSync(filePath, "utf8");
-    let name = getName(filePath);
-    let toWrite = name + "\n\n" + contents + "\n\n\n";
-    let toWriteHtml = "<h2>"+escape(name)+"</h2>" + "<pre><code class=\"language-java\">" + escape(contents) + "</code></pre>";
-    let toWriteBw = "<h2>"+escape(name)+"</h2>" + "<pre style=\"font: 25px Monospace\">" + escape(contents) + "</pre>";
-    fs.appendFileSync(saveDir, toWrite);
-    fs.appendFileSync(htmlPath, toWriteHtml);
-    fs.appendFileSync(bwHtmlPath, toWriteBw);
+    try {
+        let contents = fs.readFileSync(filePath, "utf8");
+        let name = getName(filePath);
+        let toWrite = name + "\n\n" + contents + "\n\n\n";
+        let toWriteHtml = "<h2>"+escape(name)+"</h2>" + "<pre><code class=\"language-java\">" + escape(contents) + "</code></pre>";
+        let toWriteBw = "<h2>"+escape(name)+"</h2>" + "<pre style=\"font: 25px Monospace\">" + escape(contents) + "</pre>";
+        fs.appendFileSync(saveDir, toWrite);
+        fs.appendFileSync(htmlPath, toWriteHtml);
+        fs.appendFileSync(bwHtmlPath, toWriteBw);
+    } catch(e) {
+        console.error("continuing after error: " + e);
+    }
+
 }
 
 //Get name of path to file (removing extra folders created during upload)
