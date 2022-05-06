@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Java to PDF</title>
+    </head>
+    <body style="text-align: center; font-size: xx-large">
+        <form action="/upload" method="POST" enctype="multipart/form-data" style="font: 40px Calibri bold; margin-top: 30vh;">
+            <label for="name">Team Name</label>
+            <input type="text" name="name" style="font: 40px Calibri"/>
+            <br/>
+            <label for="file">Project Source Code (Zipped):</label><br/>
+            <br/>
+            <input type="file" id="file" name="file" style="font: 40px Calibri"/>
+            <br/>
+            <input type="submit" value="Convert" style="font: 40px Calibri; margin-top: 5vh"/>
+        </form>
+        <p>
+            Merge all .pdf and .java files in the zipped folder and its subdirectories, and return them as one massive pdf.
+        </p>
+    </body>
+</html>
